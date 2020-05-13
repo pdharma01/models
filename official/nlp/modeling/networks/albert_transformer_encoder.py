@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """ALBERT (https://arxiv.org/abs/1810.04805) text encoder network."""
-
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 # from __future__ import google_type_annotations
@@ -21,13 +21,12 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.python.keras.engine import network  # pylint: disable=g-direct-tensorflow-import
 from official.modeling import activations
 from official.nlp.modeling import layers
 
 
 @tf.keras.utils.register_keras_serializable(package='Text')
-class AlbertTransformerEncoder(network.Network):
+class AlbertTransformerEncoder(tf.keras.Model):
   """ALBERT (https://arxiv.org/abs/1810.04805) text encoder network.
 
   This network implements the encoder described in the paper "ALBERT: A Lite
@@ -41,7 +40,7 @@ class AlbertTransformerEncoder(network.Network):
   The default values for this object are taken from the ALBERT-Base
   implementation described in the paper.
 
-  Attributes:
+  Arguments:
     vocab_size: The size of the token vocabulary.
     embedding_width: The width of the word embeddings. If the embedding width
       is not equal to hidden size, embedding parameters will be factorized into
@@ -65,7 +64,6 @@ class AlbertTransformerEncoder(network.Network):
     attention_dropout_rate: The dropout rate to use for the attention layers
       within the transformer layers.
     initializer: The initialzer to use for all weights in this encoder.
-    float_dtype: The dtype of this encoder. Can be 'float32' or 'float16'.
   """
 
   def __init__(self,
@@ -82,7 +80,6 @@ class AlbertTransformerEncoder(network.Network):
                dropout_rate=0.1,
                attention_dropout_rate=0.1,
                initializer=tf.keras.initializers.TruncatedNormal(stddev=0.02),
-               float_dtype='float32',
                **kwargs):
     activation = tf.keras.activations.get(activation)
     initializer = tf.keras.initializers.get(initializer)
@@ -104,7 +101,6 @@ class AlbertTransformerEncoder(network.Network):
         'dropout_rate': dropout_rate,
         'attention_dropout_rate': attention_dropout_rate,
         'initializer': tf.keras.initializers.serialize(initializer),
-        'float_dtype': float_dtype,
     }
 
     word_ids = tf.keras.layers.Input(
@@ -118,7 +114,6 @@ class AlbertTransformerEncoder(network.Network):
         vocab_size=vocab_size,
         embedding_width=embedding_width,
         initializer=initializer,
-        dtype=float_dtype,
         name='word_embeddings')
     word_embeddings = self._embedding_layer(word_ids)
 
@@ -127,7 +122,7 @@ class AlbertTransformerEncoder(network.Network):
         initializer=initializer,
         use_dynamic_slicing=True,
         max_sequence_length=max_sequence_length,
-        dtype=float_dtype)
+        name='position_embedding')
     position_embeddings = self._position_embedding_layer(word_embeddings)
 
     type_embeddings = (
@@ -136,7 +131,6 @@ class AlbertTransformerEncoder(network.Network):
             embedding_width=embedding_width,
             initializer=initializer,
             use_one_hot=True,
-            dtype=float_dtype,
             name='type_embeddings')(type_ids))
 
     embeddings = tf.keras.layers.Add()(
@@ -146,10 +140,9 @@ class AlbertTransformerEncoder(network.Network):
             name='embeddings/layer_norm',
             axis=-1,
             epsilon=1e-12,
-            dtype=float_dtype)(embeddings))
+            dtype=tf.float32)(embeddings))
     embeddings = (
-        tf.keras.layers.Dropout(rate=dropout_rate,
-                                dtype=tf.float32)(embeddings))
+        tf.keras.layers.Dropout(rate=dropout_rate)(embeddings))
     # We project the 'embedding' output to 'hidden_size' if it is not already
     # 'hidden_size'.
     if embedding_width != hidden_size:
@@ -158,9 +151,6 @@ class AlbertTransformerEncoder(network.Network):
           kernel_initializer=initializer,
           name='embedding_projection')(
               embeddings)
-
-    if float_dtype == 'float16':
-      embeddings = tf.cast(embeddings, tf.float16)
 
     data = embeddings
     attention_mask = layers.SelfAttentionMask()([data, mask])
@@ -171,7 +161,6 @@ class AlbertTransformerEncoder(network.Network):
         dropout_rate=dropout_rate,
         attention_dropout_rate=attention_dropout_rate,
         kernel_initializer=initializer,
-        dtype=float_dtype,
         name='transformer')
     for _ in range(num_layers):
       data = shared_layer([data, attention_mask])
@@ -183,7 +172,6 @@ class AlbertTransformerEncoder(network.Network):
         units=hidden_size,
         activation='tanh',
         kernel_initializer=initializer,
-        dtype=float_dtype,
         name='pooler_transform')(
             first_token_tensor)
 
